@@ -40,6 +40,39 @@ def search_instagram_accounts(cl: Client, queries: list[str]) -> list[str]:
     return handles
 
 
+async def _search_tiktok_async(queries: list[str]) -> list[str]:
+    """Søk etter TikTok-brukere via TikTokApi (spec seksjon 9.2)."""
+    from TikTokApi import TikTokApi
+    from ..config import load_config
+
+    cfg = load_config()
+    handles: list[str] = []
+    seen: set[str] = set()
+
+    async with TikTokApi() as api:
+        await api.create_sessions(ms_tokens=[cfg["tiktok_ms_token"]], num_sessions=1, sleep_after=3)
+        for q in queries:
+            try:
+                async for user in api.search.users(q, count=MAX_RESULTS_PER_QUERY):
+                    info = getattr(user, "as_dict", {}) or {}
+                    handle = (info.get("user_info") or {}).get("unique_id") \
+                        or info.get("uniqueId") \
+                        or getattr(user, "username", None)
+                    if handle and handle.lower() not in seen:
+                        seen.add(handle.lower())
+                        handles.append(handle)
+            except Exception as e:
+                log.warning("TikTok keyword-søk feilet for %r: %s", q, e)
+                continue
+    return handles
+
+
+def search_tiktok_accounts(queries: list[str]) -> list[str]:
+    """Synkron wrapper for TikTok keyword-søk."""
+    import asyncio
+    return asyncio.run(_search_tiktok_async(queries))
+
+
 def build_queries(niches: list[str] | None = None) -> list[str]:
     """Hent sterke nøkkelord fra valgte nisjer (eller alle) til søkequeries."""
     if niches is None:

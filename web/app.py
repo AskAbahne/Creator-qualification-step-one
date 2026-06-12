@@ -43,13 +43,14 @@ def _log(msg: str, stats=None):
         }
 
 
-def _run_in_background(niches, max_handles, export_to_sheets):
+def _run_in_background(platforms, niches, max_handles, export_to_sheets):
     try:
         SESSION_STATE["running"] = True
         SESSION_STATE["error"] = None
         SESSION_STATE["log"].clear()
         SESSION_STATE["started_at"] = datetime.now().strftime("%H:%M:%S")
         run_session(
+            platforms=platforms,
             niches=niches,
             export_to_sheets=export_to_sheets,
             max_handles=max_handles,
@@ -77,13 +78,20 @@ def run():
     with _lock:
         if SESSION_STATE["running"]:
             return jsonify({"ok": False, "error": "En sesjon kjorer allerede"}), 409
+        platform_choice = request.form.get("platform_choice", "both")
+        if platform_choice == "instagram":
+            platforms = ["instagram"]
+        elif platform_choice == "tiktok":
+            platforms = ["tiktok"]
+        else:
+            platforms = ["instagram", "tiktok"]
         niches = request.form.getlist("niches") or None
         max_handles = request.form.get("max", type=int)
         export_to_sheets = request.form.get("export") == "on"
 
         t = threading.Thread(
             target=_run_in_background,
-            args=(niches, max_handles, export_to_sheets),
+            args=(platforms, niches, max_handles, export_to_sheets),
             daemon=True,
         )
         t.start()
