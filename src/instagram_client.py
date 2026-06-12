@@ -11,6 +11,12 @@ log = logging.getLogger(__name__)
 
 SESSION_FILE: Path = SESSIONS_DIR / "instagram_session.json"
 
+POSTS_PER_PROFILE = 20
+
+MEDIA_TYPE_PHOTO = 1
+MEDIA_TYPE_VIDEO = 2
+MEDIA_TYPE_CAROUSEL = 8
+
 
 def _polite_delay() -> None:
     time.sleep(random.uniform(2.0, 8.0))
@@ -55,3 +61,23 @@ def fetch_profile(cl: Client, handle: str) -> dict:
         "is_verified": user.is_verified,
         "full_name": user.full_name,
     }
+
+
+def fetch_recent_posts(cl: Client, user_id: int | str, amount: int = POSTS_PER_PROFILE) -> list[dict]:
+    medias = cl.user_medias(user_id, amount=amount)
+    _polite_delay()
+
+    posts: list[dict] = []
+    for m in medias:
+        posts.append({
+            "id": str(m.pk),
+            "media_type": m.media_type,
+            "is_video": m.media_type == MEDIA_TYPE_VIDEO,
+            "taken_at": m.taken_at,
+            "like_count": m.like_count or 0,
+            "comment_count": m.comment_count or 0,
+            "view_count": getattr(m, "view_count", None) or getattr(m, "play_count", None) or 0,
+            "caption_text": m.caption_text or "",
+            "hashtags": [tag.lower().lstrip("#") for tag in (m.hashtags or [])],
+        })
+    return posts
