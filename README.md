@@ -58,6 +58,22 @@ python -m scripts.test_instagram_login natgeo    # Byggesteg 1+2
 python -m scripts.test_tiktok mrbeast            # Byggesteg 10
 ```
 
+## Skalering
+
+Volum-tak per oppsett:
+
+| Setup | Trygg per dag |
+|---|---|
+| Ny konto, uke 1 | 50–100 |
+| Ny konto, uke 2–4 | 200–300 |
+| Etablert konto (1+ mnd) | 500 |
+| + datacenter-proxy | 1 500–2 000 |
+| + residential proxy | 5 000+ |
+
+Proxy-støtte er allerede bygd inn i alle klienter. Fyll inn `"proxy"`-feltet i `config.json` når du er klar. Se [docs/PROXY_SETUP.md](docs/PROXY_SETUP.md) for kjøpesteder og konfigurasjon.
+
+Social Blade fake-follower-sjekk for Instagram er midlertidig hoppet over (specens kriterium 11). Plan for senere aktivering: [docs/SOCIALBLADE_PLAN.md](docs/SOCIALBLADE_PLAN.md).
+
 ## Hemmeligheter
 
 `config.json`, service account JSON, persisterte sesjoner og SQLite-databasen er gitignored. Push aldri disse til remote.

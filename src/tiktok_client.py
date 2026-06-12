@@ -77,8 +77,14 @@ async def _fetch_recent_posts_async(api: TikTokApi, handle: str, amount: int) ->
 async def _with_api(work):
     cfg = load_config()
     ms_token = cfg["tiktok_ms_token"]
+    proxy = cfg.get("proxy", "").strip()
+
     async with TikTokApi() as api:
-        await api.create_sessions(ms_tokens=[ms_token], num_sessions=1, sleep_after=3)
+        session_kwargs = {"ms_tokens": [ms_token], "num_sessions": 1, "sleep_after": 3}
+        if proxy:
+            session_kwargs["proxies"] = [proxy]
+            log.info("Bruker proxy for TikTok-sesjon")
+        await api.create_sessions(**session_kwargs)
         return await work(api)
 
 

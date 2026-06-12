@@ -26,6 +26,11 @@ def login(force_fresh: bool = False) -> Client:
     cfg = load_config()
     cl = Client()
 
+    proxy = cfg.get("proxy", "").strip()
+    if proxy:
+        cl.set_proxy(proxy)
+        log.info("Bruker proxy for Instagram-sesjon")
+
     username = cfg["instagram_username"]
     password = cfg["instagram_password"]
 

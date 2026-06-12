@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import sync_playwright
 
+from .config import load_config
+
 log = logging.getLogger(__name__)
 
 SOCIALBLADE_URLS = {
@@ -55,8 +57,15 @@ def scrape_weekly_growth(handle: str, platform: str = "instagram") -> list[dict]
     url = SOCIALBLADE_URLS[platform].format(handle=handle)
     data: list[dict] = []
 
+    cfg = load_config()
+    proxy_url = cfg.get("proxy", "").strip()
+
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
+        launch_kwargs = {"headless": True}
+        if proxy_url:
+            launch_kwargs["proxy"] = {"server": proxy_url}
+            log.info("Bruker proxy for Social Blade-scraping")
+        browser = pw.chromium.launch(**launch_kwargs)
         context = browser.new_context(user_agent=USER_AGENT, viewport={"width": 1280, "height": 800})
         page = context.new_page()
 

@@ -4,6 +4,7 @@
   "tiktok_ms_token": "<msToken fra Chrome cookies>",
   "google_sheets_credentials": "<absolutt sti til service account JSON>",
   "google_sheets_id": "<ID fra Google Sheets URL>",
+  "proxy": "",
   "seed_profiles": {
     "weightloss": [],
     "strength_training": [],
