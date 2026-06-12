@@ -1,0 +1,29 @@
+{
+  "instagram_username": "<dedikert_instagram_brukernavn>",
+  "instagram_password": "<passord>",
+  "tiktok_ms_token": "<msToken fra Chrome cookies>",
+  "google_sheets_credentials": "<absolutt sti til service account JSON>",
+  "google_sheets_id": "<ID fra Google Sheets URL>",
+  "seed_profiles": {
+    "weightloss": [],
+    "strength_training": [],
+    "nutrition": [],
+    "mental_health": [],
+    "sleep": [],
+    "personal_finance": [],
+    "investing": [],
+    "side_hustle": [],
+    "freelancer": [],
+    "creator_business": [],
+    "dating_men": [],
+    "dating_women": [],
+    "marriage": [],
+    "social_skills": [],
+    "masculinity": [],
+    "femininity": [],
+    "productivity": [],
+    "morning_routine": [],
+    "confidence": [],
+    "stoicism": []
+  }
+}
