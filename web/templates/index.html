@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <title>Abahne Discovery - Steg 1</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, Segoe UI, sans-serif; max-width: 1100px; margin: 30px auto; padding: 0 20px; color: #1a1a1a; }
+    h1 { margin: 0; font-size: 26px; }
+    .sub { color: #666; margin-top: 4px; font-size: 14px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 24px; }
+    .card { background: #f7f7f7; border-radius: 10px; padding: 20px; }
+    .card h2 { margin: 0 0 12px 0; font-size: 16px; color: #333; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eaeaea; }
+    .stat-row:last-child { border-bottom: 0; }
+    .stat-row .val { font-weight: 600; }
+    button { background: #1a1a1a; color: white; border: 0; padding: 12px 22px; border-radius: 6px; cursor: pointer; font-size: 15px; }
+    button:disabled { background: #aaa; cursor: not-allowed; }
+    .log { background: #0a0a0a; color: #b9ffb9; padding: 14px; border-radius: 8px; font-family: Consolas, monospace; font-size: 12px; height: 320px; overflow-y: auto; white-space: pre-wrap; }
+    .controls { display: flex; gap: 12px; align-items: center; margin: 16px 0; flex-wrap: wrap; }
+    label { font-size: 14px; color: #555; }
+    input[type=number], select { padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eaeaea; }
+    th { color: #666; font-weight: 600; }
+    .status-pill { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+    .pill-idle { background: #e0e0e0; color: #555; }
+    .pill-running { background: #d1f5d1; color: #1a661a; }
+  </style>
+</head>
+<body>
+  <h1>Abahne Discovery <span id="status-pill" class="status-pill pill-idle">Klar</span></h1>
+  <div class="sub">Steg 1 - automatisert creator-qualification | Instagram</div>
+
+  <div class="card" style="margin-top: 24px;">
+    <h2>Start sesjon</h2>
+    <form id="run-form" class="controls">
+      <label>Maks handles: <input type="number" name="max" value="50" min="1" max="1000"></label>
+      <label><input type="checkbox" name="export" checked> Eksporter til Sheets</label>
+      <button type="submit" id="run-btn">Kjør sesjon</button>
+    </form>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Live-status</h2>
+      <div id="live-stats">
+        {% if stats %}
+        <div class="stat-row"><span>Discovered:</span><span class="val" id="s-discovered">-</span></div>
+        <div class="stat-row"><span>Etter dedup:</span><span class="val" id="s-dedup">-</span></div>
+        <div class="stat-row"><span>Prosessert:</span><span class="val" id="s-processed">-</span></div>
+        <div class="stat-row"><span>Godkjent:</span><span class="val" id="s-approved">-</span></div>
+        <div class="stat-row"><span>Avvist:</span><span class="val" id="s-rejected">-</span></div>
+        <div class="stat-row"><span>Tid (min):</span><span class="val" id="s-time">-</span></div>
+        {% endif %}
+      </div>
+      <h2 style="margin-top: 20px;">Database totalt</h2>
+      <div class="stat-row"><span>Totalt prosessert:</span><span class="val">{{ stats.total }}</span></div>
+      <div class="stat-row"><span>Godkjent:</span><span class="val">{{ stats.approved }}</span></div>
+      <div class="stat-row"><span>Avvist:</span><span class="val">{{ stats.rejected }}</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Sesjonslogg</h2>
+      <div id="log" class="log">Klar - trykk "Kjor sesjon" for a starte.</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: 20px;">
+    <h2>Siste 10 godkjente</h2>
+    {% if approved_recent %}
+    <table>
+      <thead><tr><th>Handle</th><th>Plattform</th><th>Nisje</th><th>ER %</th><th>Følgere</th><th>Sjekket</th></tr></thead>
+      <tbody>
+        {% for r in approved_recent %}
+        <tr>
+          <td>@{{ r.handle }}</td>
+          <td>{{ r.platform }}</td>
+          <td>{{ r.niche }}</td>
+          <td>{{ '%.2f' % (r.engagement or 0) }}</td>
+          <td>{{ '{:,}'.format(r.follower_count or 0) }}</td>
+          <td>{{ r.checked_at[:10] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color: #888;">Ingen godkjente creators i databasen enda.</p>
+    {% endif %}
+  </div>
+
+  <script>
+    const logEl = document.getElementById('log');
+    const pill = document.getElementById('status-pill');
+    const runBtn = document.getElementById('run-btn');
+    const form = document.getElementById('run-form');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      runBtn.disabled = true;
+      const data = new FormData(form);
+      const r = await fetch('/run', { method: 'POST', body: data });
+      if (!r.ok) {
+        const j = await r.json();
+        alert('Kunne ikke starte: ' + (j.error || 'ukjent feil'));
+        runBtn.disabled = false;
+      }
+    });
+
+    async function poll() {
+      try {
+        const r = await fetch('/status');
+        const j = await r.json();
+        if (j.running) {
+          pill.className = 'status-pill pill-running';
+          pill.textContent = 'Kjorer (' + (j.started_at || '...') + ')';
+          runBtn.disabled = true;
+        } else {
+          pill.className = 'status-pill pill-idle';
+          pill.textContent = 'Klar';
+          runBtn.disabled = false;
+        }
+        if (j.log && j.log.length) {
+          logEl.textContent = j.log.join('\n');
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+        if (j.stats) {
+          const s = j.stats;
+          const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+          setVal('s-discovered', s.discovered);
+          setVal('s-dedup', s.after_dedup);
+          setVal('s-processed', s.processed);
+          setVal('s-approved', s.approved);
+          setVal('s-rejected', s.rejected);
+          setVal('s-time', s.elapsed_min);
+        }
+      } catch (e) { /* ignore */ }
+    }
+    setInterval(poll, 1500);
+    poll();
+  </script>
+</body>
+</html>

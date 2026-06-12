@@ -19,21 +19,44 @@ Steg 1 i Abahnes outreach-pipeline. Volum og hastighet — ingen kvalitativ vurd
 
 ## Status
 
-Bygges stegvis etter Discovery Spec v1.2 — seksjon 0.9 byggerekkefølge.
+Bygget stegvis etter Discovery Spec v1.2 — seksjon 0.9 byggerekkefølge.
 
 | # | Modul | Status |
 |---|---|---|
 | 1 | Instagram-innlogging (instagrapi) | Kode klar — venter live-validering |
-| 2 | Hent siste 20 poster | — |
-| 3 | Early exit-filter (11 kriterier) | — |
-| 4 | SQLite deduplication | — |
-| 5 | Google Sheets-eksport | — |
-| 6 | Discovery: keyword-søk | — |
-| 7 | Discovery: seed-profiler | — |
-| 8 | Discovery: hashtag-søk | — |
-| 9 | Social Blade fake-follower-sjekk | — |
-| 10 | TikTok-integrasjon | — |
-| 11 | Frontend | — |
+| 2 | Hent siste 20 poster | Kode klar — venter live-validering |
+| 3 | Early exit-filter (11 kriterier) | ✅ Validert (11 enhetstester) |
+| 4 | SQLite deduplication | ✅ Validert (9 enhetstester) |
+| 5 | Google Sheets-eksport | ✅ Live-testet mot eget ark |
+| 6 | Discovery: keyword-søk | Kode klar — venter live-validering |
+| 7 | Discovery: seed-profiler | Kode klar — trenger seed-handles i config |
+| 8 | Discovery: hashtag-søk | Kode klar — venter live-validering |
+| 9 | Social Blade fake-follower-sjekk | ⚠️ Hoppes over for IG (SB krever nå login) |
+| 10 | TikTok-integrasjon | Kode klar — venter live-validering |
+| 11 | Frontend (Flask) | ✅ Imports + endepunkter validert |
+
+## Kjøring
+
+CLI:
+```
+python main.py                  # full sesjon, alle nisjer, eksport til Sheets
+python main.py --max 20         # bare prosesser 20 handles
+python main.py --no-sheets      # hopp over Sheets
+python main.py --stats-only     # vis database-statistikk
+```
+
+Nettside:
+```
+python web/app.py               # åpne http://127.0.0.1:5000 i nettleser
+```
+
+## Validering før produksjon
+
+Skript som validerer hvert lag live (kjøres manuelt når Instagram-kontoen er moden):
+```
+python -m scripts.test_instagram_login natgeo    # Byggesteg 1+2
+python -m scripts.test_tiktok mrbeast            # Byggesteg 10
+```
 
 ## Hemmeligheter
 
