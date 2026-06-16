@@ -14,18 +14,27 @@
     .stat-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eaeaea; }
     .stat-row:last-child { border-bottom: 0; }
     .stat-row .val { font-weight: 600; }
-    button { background: #1a1a1a; color: white; border: 0; padding: 12px 22px; border-radius: 6px; cursor: pointer; font-size: 15px; }
+    button { background: #1a1a1a; color: white; border: 0; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-size: 14px; }
     button:disabled { background: #aaa; cursor: not-allowed; }
+    button.secondary { background: #fff; color: #1a1a1a; border: 1px solid #1a1a1a; }
+    button.download { background: #1a661a; }
     .log { background: #0a0a0a; color: #b9ffb9; padding: 14px; border-radius: 8px; font-family: Consolas, monospace; font-size: 12px; height: 320px; overflow-y: auto; white-space: pre-wrap; }
-    .controls { display: flex; gap: 12px; align-items: center; margin: 16px 0; flex-wrap: wrap; }
+    .controls { display: flex; gap: 12px; align-items: center; margin: 10px 0; flex-wrap: wrap; }
     label { font-size: 14px; color: #555; }
     input[type=number], select { padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+    .niche-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px 14px; margin: 10px 0 14px; padding: 12px; background: #fff; border-radius: 6px; border: 1px solid #ddd; }
+    .niche-grid label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+    .niche-quick { display: flex; gap: 8px; margin-bottom: 10px; }
+    .niche-quick button { font-size: 12px; padding: 4px 10px; }
     table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
     th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eaeaea; }
     th { color: #666; font-weight: 600; }
     .status-pill { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
     .pill-idle { background: #e0e0e0; color: #555; }
     .pill-running { background: #d1f5d1; color: #1a661a; }
+    .download-bar { display: flex; gap: 10px; margin-top: 12px; }
+    .download-bar a { text-decoration: none; }
+    .info-text { font-size: 12px; color: #888; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -34,32 +43,52 @@
 
   <div class="card" style="margin-top: 24px;">
     <h2>Start sesjon</h2>
-    <form id="run-form" class="controls">
-      <label>Plattform:
-        <select name="platform_choice" id="platform-choice">
-          <option value="both">Begge (Instagram + TikTok)</option>
-          <option value="instagram" selected>Kun Instagram</option>
-          <option value="tiktok">Kun TikTok</option>
-        </select>
-      </label>
-      <label>Maks handles: <input type="number" name="max" value="50" min="1" max="1000"></label>
-      <label><input type="checkbox" name="export" checked> Eksporter til Sheets</label>
+    <form id="run-form">
+      <div class="controls">
+        <label>Plattform:
+          <select name="platform_choice" id="platform-choice">
+            <option value="instagram" selected>Kun Instagram</option>
+            <option value="tiktok">Kun TikTok</option>
+            <option value="both">Begge</option>
+          </select>
+        </label>
+        <label>Maks handles: <input type="number" name="max" value="50" min="1" max="5000"></label>
+      </div>
+
+      <div>
+        <label style="display: block; margin-bottom: 4px;"><strong>Nisjer å søke i</strong> (minst 1)</label>
+        <div class="niche-quick">
+          <button type="button" onclick="selectAllNiches(true)">Velg alle</button>
+          <button type="button" onclick="selectAllNiches(false)">Tøm</button>
+        </div>
+        <div class="niche-grid">
+          {% for niche in all_niches %}
+          <label><input type="checkbox" name="niches" value="{{ niche }}"> {{ niche }}</label>
+          {% endfor %}
+        </div>
+      </div>
+
       <button type="submit" id="run-btn">Kjør sesjon</button>
+      <div class="info-text">Ingen automatisk eksport til Google Sheets. Etter sesjon: bruk «Last ned»-knappene under.</div>
     </form>
+
+    <div class="download-bar">
+      <button type="button" class="download" id="dl-session-btn" disabled onclick="downloadSession()">Last ned godkjente (CSV)</button>
+      <button type="button" class="secondary" onclick="downloadDiagnostics()">Hent data (JSON)</button>
+    </div>
+    <div class="info-text">«Hent data» laster ned all kumulativ diagnostikk for opplasting til Claude.</div>
   </div>
 
   <div class="grid">
     <div class="card">
       <h2>Live-status</h2>
       <div id="live-stats">
-        {% if stats %}
         <div class="stat-row"><span>Discovered:</span><span class="val" id="s-discovered">-</span></div>
         <div class="stat-row"><span>Etter dedup:</span><span class="val" id="s-dedup">-</span></div>
         <div class="stat-row"><span>Prosessert:</span><span class="val" id="s-processed">-</span></div>
         <div class="stat-row"><span>Godkjent:</span><span class="val" id="s-approved">-</span></div>
         <div class="stat-row"><span>Avvist:</span><span class="val" id="s-rejected">-</span></div>
         <div class="stat-row"><span>Tid (min):</span><span class="val" id="s-time">-</span></div>
-        {% endif %}
       </div>
       <h2 style="margin-top: 20px;">Database totalt</h2>
       <div class="stat-row"><span>Totalt prosessert:</span><span class="val">{{ stats.total }}</span></div>
@@ -69,8 +98,41 @@
 
     <div class="card">
       <h2>Sesjonslogg</h2>
-      <div id="log" class="log">Klar - trykk "Kjor sesjon" for a starte.</div>
+      <div id="log" class="log">Klar - velg nisjer og trykk "Kjør sesjon".</div>
     </div>
+  </div>
+
+  <div class="card" style="margin-top: 20px;">
+    <h2>Godkjenningsrate per nisje</h2>
+    <p style="color: #666; font-size: 13px; margin: 0 0 10px;">
+      Viser kun creators som matchet en nisje. Bruk dette til å se hvilke nisjer som leverer flest godkjente.
+    </p>
+    {% if niche_stats %}
+    <table>
+      <thead><tr><th>Nisje</th><th>Prosessert</th><th>Godkjent</th><th>Avvist</th><th>Rate</th></tr></thead>
+      <tbody>
+        {% for s in niche_stats %}
+        <tr>
+          <td>{{ s.niche }}</td>
+          <td>{{ s.processed }}</td>
+          <td><strong>{{ s.approved }}</strong></td>
+          <td style="color: #888;">{{ s.rejected }}</td>
+          <td>
+            {% if s.approval_rate >= 5 %}
+              <span style="color: #1a661a; font-weight: 600;">{{ s.approval_rate }}%</span>
+            {% elif s.approval_rate >= 2 %}
+              <span style="color: #b07000;">{{ s.approval_rate }}%</span>
+            {% else %}
+              <span style="color: #b03030;">{{ s.approval_rate }}%</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color: #888;">Ingen data enda - kjør første sesjon.</p>
+    {% endif %}
   </div>
 
   <div class="card" style="margin-top: 20px;">
@@ -100,10 +162,23 @@
     const logEl = document.getElementById('log');
     const pill = document.getElementById('status-pill');
     const runBtn = document.getElementById('run-btn');
+    const dlBtn = document.getElementById('dl-session-btn');
     const form = document.getElementById('run-form');
+
+    function selectAllNiches(state) {
+      document.querySelectorAll('input[name="niches"]').forEach(cb => cb.checked = state);
+    }
+
+    function downloadSession() { window.location.href = '/download/session'; }
+    function downloadDiagnostics() { window.location.href = '/download/diagnostics'; }
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      const checked = document.querySelectorAll('input[name="niches"]:checked');
+      if (checked.length === 0) {
+        alert('Minst én nisje må velges.');
+        return;
+      }
       runBtn.disabled = true;
       const data = new FormData(form);
       const r = await fetch('/run', { method: 'POST', body: data });
@@ -122,10 +197,12 @@
           pill.className = 'status-pill pill-running';
           pill.textContent = 'Kjorer (' + (j.started_at || '...') + ')';
           runBtn.disabled = true;
+          dlBtn.disabled = true;
         } else {
           pill.className = 'status-pill pill-idle';
           pill.textContent = 'Klar';
           runBtn.disabled = false;
+          dlBtn.disabled = (j.last_session_id === null);
         }
         if (j.log && j.log.length) {
           logEl.textContent = j.log.join('\n');

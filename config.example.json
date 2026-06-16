@@ -1,11 +1,27 @@
 {
-  "instagram_username": "<dedikert_instagram_brukernavn>",
-  "instagram_password": "<passord>",
+  "instagram_accounts": [
+    {
+      "label": "konto_1",
+      "username": "<brukernavn1>",
+      "password": "<passord1>",
+      "proxy": "http://bruker:passord@host:port",
+      "warmup_mode": false
+    },
+    {
+      "label": "konto_2",
+      "username": "<brukernavn2>",
+      "password": "<passord2>",
+      "proxy": "http://bruker:passord@host:port",
+      "warmup_mode": false
+    }
+  ],
   "tiktok_ms_token": "<msToken fra Chrome cookies>",
+  "tiktok_proxy": "",
   "google_sheets_credentials": "<absolutt sti til service account JSON>",
   "google_sheets_id": "<ID fra Google Sheets URL>",
   "proxy": "",
   "seed_profiles": {
+    "creator_business": [],
     "weightloss": [],
     "strength_training": [],
     "nutrition": [],
@@ -15,7 +31,6 @@
     "investing": [],
     "side_hustle": [],
     "freelancer": [],
-    "creator_business": [],
     "dating_men": [],
     "dating_women": [],
     "marriage": [],
@@ -26,5 +41,6 @@
     "morning_routine": [],
     "confidence": [],
     "stoicism": []
-  }
+  },
+  "seed_max_per_niche": 15
 }

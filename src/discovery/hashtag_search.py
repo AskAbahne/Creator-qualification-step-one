@@ -1,8 +1,7 @@
 """
 Discovery-kilde 3: hashtag-søk (spec seksjon 9.4).
 
-Høyest volum-kilde, lavere presisjon enn kilde 1 og 2. Henter poster under
-en hashtag og ekstraherer @handles. Sikrer at koen alltid er full.
+Returnerer (handle, source_type, source_value) per discovered handle.
 """
 from __future__ import annotations
 
@@ -18,10 +17,9 @@ POSTS_PER_HASHTAG_TOP = 30
 POSTS_PER_HASHTAG_RECENT = 30
 
 
-def search_instagram_hashtag(cl: Client, hashtag: str) -> list[str]:
-    """Hent top + recent poster under en hashtag, ekstraher handles."""
+def search_instagram_hashtag(cl: Client, hashtag: str) -> list[tuple[str, str, str]]:
     hashtag = hashtag.lstrip("#")
-    handles: list[str] = []
+    out: list[tuple[str, str, str]] = []
     seen: set[str] = set()
 
     for fetcher, count in (
@@ -37,34 +35,35 @@ def search_instagram_hashtag(cl: Client, hashtag: str) -> list[str]:
             h = getattr(getattr(m, "user", None), "username", None)
             if h and h.lower() not in seen:
                 seen.add(h.lower())
-                handles.append(h)
+                out.append((h, "hashtag", hashtag))
+    return out
 
-    return handles
 
-
-def search_many_hashtags(cl: Client, hashtags: list[str]) -> list[str]:
-    """Søk flere hashtags. Returner alle unike handles."""
-    handles: list[str] = []
+def search_many_hashtags(cl: Client, hashtags: list[str]) -> list[tuple[str, str, str]]:
+    out: list[tuple[str, str, str]] = []
     seen: set[str] = set()
     for tag in hashtags:
-        for h in search_instagram_hashtag(cl, tag):
-            if h.lower() not in seen:
-                seen.add(h.lower())
-                handles.append(h)
-    return handles
+        for handle, src_type, src_val in search_instagram_hashtag(cl, tag):
+            if handle.lower() not in seen:
+                seen.add(handle.lower())
+                out.append((handle, src_type, src_val))
+    return out
 
 
-async def _search_tiktok_hashtag_async(hashtags: list[str]) -> list[str]:
-    """Hent videoer per hashtag på TikTok og ekstraher unike handles (spec 9.4)."""
+async def _search_tiktok_hashtag_async(hashtags: list[str]) -> list[tuple[str, str, str]]:
     from TikTokApi import TikTokApi
     from ..config import load_config
 
     cfg = load_config()
-    handles: list[str] = []
+    proxy = cfg.get("tiktok_proxy", "").strip() or cfg.get("proxy", "").strip()
+    out: list[tuple[str, str, str]] = []
     seen: set[str] = set()
 
     async with TikTokApi() as api:
-        await api.create_sessions(ms_tokens=[cfg["tiktok_ms_token"]], num_sessions=1, sleep_after=3)
+        session_kwargs = {"ms_tokens": [cfg["tiktok_ms_token"]], "num_sessions": 1, "sleep_after": 3}
+        if proxy:
+            session_kwargs["proxies"] = [proxy]
+        await api.create_sessions(**session_kwargs)
         for tag in hashtags:
             tag_name = tag.lstrip("#")
             try:
@@ -75,26 +74,26 @@ async def _search_tiktok_hashtag_async(hashtags: list[str]) -> list[str]:
                     handle = author.get("uniqueId") or author.get("unique_id")
                     if handle and handle.lower() not in seen:
                         seen.add(handle.lower())
-                        handles.append(handle)
+                        out.append((handle, "hashtag", tag_name))
             except Exception as e:
                 log.warning("TikTok hashtag-søk feilet for #%s: %s", tag_name, e)
                 continue
-    return handles
+    return out
 
 
-def search_tiktok_hashtags(hashtags: list[str]) -> list[str]:
-    """Synkron wrapper for TikTok hashtag-søk."""
+def search_tiktok_hashtags(hashtags: list[str]) -> list[tuple[str, str, str]]:
     import asyncio
     return asyncio.run(_search_tiktok_hashtag_async(hashtags))
 
 
 def hashtags_from_niches(niches: list[str] | None = None) -> list[str]:
-    """Plate ut alle sterke nøkkelord fra valgte nisjer som hashtags."""
     if niches is None:
         niches = list(NICHES.keys())
     out: list[str] = []
     seen: set[str] = set()
     for niche in niches:
+        if niche not in NICHES:
+            continue
         for kw in NICHES[niche]["strong"]:
             if kw not in seen:
                 seen.add(kw)

@@ -1,8 +1,8 @@
 """
 Discovery-kilde 1: keyword-søk på kontoer (spec seksjon 9.2).
 
-Mest presis kilde. Bruker plattformenes egen rangering.
-Kjøres alltid først per sesjon.
+Returnerer liste av (handle, source_type, source_value)-tupler så
+orchestrator kan spore hvilket søk som fant hver creator.
 """
 from __future__ import annotations
 
@@ -18,13 +18,12 @@ MAX_RESULTS_PER_QUERY = 25
 
 
 def _query_for_keyword(keyword: str) -> str:
-    """Bygg et naturlig søkequery (f.eks. 'weightloss' -> 'weightloss coach')."""
     return f"{keyword} coach"
 
 
-def search_instagram_accounts(cl: Client, queries: list[str]) -> list[str]:
-    """Søk etter kontoer på Instagram for hver query. Returner unike handles."""
-    handles: list[str] = []
+def search_instagram_accounts(cl: Client, queries: list[str]) -> list[tuple[str, str, str]]:
+    """Returner liste av (handle, 'keyword', query) — unike på handle."""
+    out: list[tuple[str, str, str]] = []
     seen: set[str] = set()
     for q in queries:
         try:
@@ -36,21 +35,24 @@ def search_instagram_accounts(cl: Client, queries: list[str]) -> list[str]:
             handle = getattr(user, "username", None)
             if handle and handle.lower() not in seen:
                 seen.add(handle.lower())
-                handles.append(handle)
-    return handles
+                out.append((handle, "keyword", q))
+    return out
 
 
-async def _search_tiktok_async(queries: list[str]) -> list[str]:
-    """Søk etter TikTok-brukere via TikTokApi (spec seksjon 9.2)."""
+async def _search_tiktok_async(queries: list[str]) -> list[tuple[str, str, str]]:
     from TikTokApi import TikTokApi
     from ..config import load_config
 
     cfg = load_config()
-    handles: list[str] = []
+    proxy = cfg.get("tiktok_proxy", "").strip() or cfg.get("proxy", "").strip()
+    out: list[tuple[str, str, str]] = []
     seen: set[str] = set()
 
     async with TikTokApi() as api:
-        await api.create_sessions(ms_tokens=[cfg["tiktok_ms_token"]], num_sessions=1, sleep_after=3)
+        session_kwargs = {"ms_tokens": [cfg["tiktok_ms_token"]], "num_sessions": 1, "sleep_after": 3}
+        if proxy:
+            session_kwargs["proxies"] = [proxy]
+        await api.create_sessions(**session_kwargs)
         for q in queries:
             try:
                 async for user in api.search.users(q, count=MAX_RESULTS_PER_QUERY):
@@ -60,25 +62,25 @@ async def _search_tiktok_async(queries: list[str]) -> list[str]:
                         or getattr(user, "username", None)
                     if handle and handle.lower() not in seen:
                         seen.add(handle.lower())
-                        handles.append(handle)
+                        out.append((handle, "keyword", q))
             except Exception as e:
                 log.warning("TikTok keyword-søk feilet for %r: %s", q, e)
                 continue
-    return handles
+    return out
 
 
-def search_tiktok_accounts(queries: list[str]) -> list[str]:
-    """Synkron wrapper for TikTok keyword-søk."""
+def search_tiktok_accounts(queries: list[str]) -> list[tuple[str, str, str]]:
     import asyncio
     return asyncio.run(_search_tiktok_async(queries))
 
 
 def build_queries(niches: list[str] | None = None) -> list[str]:
-    """Hent sterke nøkkelord fra valgte nisjer (eller alle) til søkequeries."""
     if niches is None:
         niches = list(NICHES.keys())
     queries: list[str] = []
     for niche in niches:
+        if niche not in NICHES:
+            continue
         for kw in NICHES[niche]["strong"]:
             queries.append(_query_for_keyword(kw))
     return queries

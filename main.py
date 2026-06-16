@@ -2,20 +2,17 @@
 Hovedscript - kjorer en full discovery- og filtreringssesjon.
 
 Sesjonsflyt (spec seksjon 9.5):
-  1. Discovery-kilde 1: keyword-sok pa kontoer
-  2. Discovery-kilde 2: lignende kontoer fra seed-profiler  (kun Instagram)
-  3. Discovery-kilde 3: hashtag-sok
-  4. Deduplisering mot SQLite
-  5. Filtrering med early-exit
-  6. Eksport av godkjente til Google Sheets
-  7. Logging av alle resultater til SQLite
+  1. Discovery (3 kilder) per valgt plattform
+  2. Deduplisering mot SQLite
+  3. Filtrering med early-exit + konto-rotasjon
+  4. Selvforsterkende seeds: godkjente legges automatisk til seed-listen
+  5. Logging til SQLite (ingen automatisk Sheets-eksport)
 
 Bruk:
-    python main.py                              # full sesjon, IG + TikTok, alle nisjer
+    python main.py                              # IG + TikTok, alle nisjer
     python main.py --platforms instagram        # kun Instagram
     python main.py --platforms tiktok           # kun TikTok
-    python main.py --niches stoicism            # kun en nisje
-    python main.py --no-sheets                  # hopp over Sheets-eksport
+    python main.py --niches stoicism weightloss # kun valgte nisjer
     python main.py --max 20                     # bare prosesser 20 handles totalt
     python main.py --stats-only                 # vis DB-statistikk og avslutt
 """
@@ -28,26 +25,25 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from src.config import load_config
-from src.database import filter_unseen, get_stats, record_result
+from src.database import (
+    filter_unseen, finalize_session, get_account_health,
+    get_stats, log_health_event, record_result, start_session,
+)
 from src.discovery.hashtag_search import (
-    hashtags_from_niches,
-    search_many_hashtags,
-    search_tiktok_hashtags,
+    hashtags_from_niches, search_many_hashtags, search_tiktok_hashtags,
 )
 from src.discovery.keyword_search import (
-    build_queries,
-    search_instagram_accounts,
-    search_tiktok_accounts,
+    build_queries, search_instagram_accounts, search_tiktok_accounts,
 )
-from src.discovery.seed_profiles import all_seeds_from_config, find_similar_accounts
+from src.discovery.seed_profiles import (
+    add_seed, all_seeds_grouped, find_similar_accounts,
+)
 from src.filters import FilterResult, check_creator
 from src.instagram_client import (
-    fetch_profile as ig_fetch_profile,
+    InstagramPool, fetch_profile as ig_fetch_profile,
     fetch_recent_posts as ig_fetch_posts,
-    login as ig_login,
 )
 from src.niches import NICHES
-from src.sheets import append_approved
 from src.tiktok_client import (
     fetch_profile as tt_fetch_profile,
     fetch_recent_posts as tt_fetch_posts,
@@ -56,6 +52,7 @@ from src.tiktok_client import (
 log = logging.getLogger("discovery")
 
 VALID_PLATFORMS = ("instagram", "tiktok")
+HEALTH_PAUSE_REASONS = ("challenge_required", "rate_limited")
 
 
 @dataclass
@@ -73,91 +70,127 @@ class SessionStats:
     def elapsed_seconds(self) -> float:
         return time.time() - self.started_at
 
-    def summary_text(self) -> str:
-        m = self.elapsed_seconds / 60
-        return (
-            f"Sesjon ferdig pa {m:.1f} min:\n"
-            f"  Discovered: {self.discovered}\n"
-            f"  Etter dedup: {self.after_dedup}\n"
-            f"  Prosessert: {self.processed}\n"
-            f"  Godkjent:   {self.approved}\n"
-            f"  Avvist:     {self.rejected}\n"
-            f"  Per plattform: {self.by_platform}\n"
-            f"  Top-frafall: {dict(list(self.by_failure.items())[:5])}"
-        )
+
+def _dedup_first(handles_with_source: list[tuple[str, str, str]]) -> dict[str, tuple[str, str]]:
+    """Dedup på handle. Behold første (handle, source_type, source_value)."""
+    out: dict[str, tuple[str, str]] = {}
+    for handle, src_type, src_val in handles_with_source:
+        key = handle.lower()
+        if key not in out:
+            out[key] = (handle, src_type) if False else (src_type, src_val)
+    return out  # {handle_lower: (source_type, source_value)}
 
 
-def _dedup(handles: list[str]) -> list[str]:
+def _discover_instagram(pool: InstagramPool, niches, cfg, update) -> list[tuple[str, str, str]]:
+    """Returner alle discovered handles fra IG som (handle, source_type, source_value)."""
+    all_results: list[tuple[str, str, str]] = []
     seen: set[str] = set()
-    out: list[str] = []
-    for h in handles:
-        n = h.lower()
-        if n not in seen:
-            seen.add(n)
-            out.append(h)
-    return out
 
+    def add_batch(batch: list[tuple[str, str, str]]):
+        for h, st, sv in batch:
+            if h.lower() not in seen:
+                seen.add(h.lower())
+                all_results.append((h, st, sv))
 
-def _discover_instagram(cl, niches, cfg, update) -> list[str]:
-    handles: list[str] = []
+    # Bruk første client til discovery
+    slot = pool.next_client()
+    cl = slot.client
+
     update("[IG] Kilde 1: keyword-sok...")
     queries = build_queries(niches)
-    handles += search_instagram_accounts(cl, queries)
-    update(f"[IG]  Kilde 1 totalt unike: {len(set(h.lower() for h in handles))}")
+    add_batch(search_instagram_accounts(cl, queries))
+    update(f"[IG]  Etter kilde 1: {len(all_results)} unike")
 
     update("[IG] Kilde 2: seed-profiler...")
-    seeds = all_seeds_from_config(cfg)
-    if seeds:
-        handles += find_similar_accounts(cl, seeds)
-        update(f"[IG]  Kilde 2 totalt unike: {len(set(h.lower() for h in handles))}")
+    seeds_grouped = {n: s for n, s in all_seeds_grouped(cfg).items() if n in niches}
+    if seeds_grouped:
+        add_batch(find_similar_accounts(cl, seeds_grouped))
+        update(f"[IG]  Etter kilde 2: {len(all_results)} unike")
     else:
-        update("[IG]  Ingen seed-profiler i config - kilde 2 hoppes over")
+        update("[IG]  Ingen seeds for valgte nisjer - kilde 2 hoppes over")
 
     update("[IG] Kilde 3: hashtag-sok...")
     tags = hashtags_from_niches(niches)
-    handles += search_many_hashtags(cl, tags)
-    update(f"[IG]  Kilde 3 totalt unike: {len(set(h.lower() for h in handles))}")
-    return _dedup(handles)
+    add_batch(search_many_hashtags(cl, tags))
+    update(f"[IG]  Etter kilde 3: {len(all_results)} unike")
+
+    return all_results
 
 
-def _discover_tiktok(niches, update) -> list[str]:
-    handles: list[str] = []
+def _discover_tiktok(niches, update) -> list[tuple[str, str, str]]:
+    out: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+
+    def add_batch(batch):
+        for h, st, sv in batch:
+            if h.lower() not in seen:
+                seen.add(h.lower())
+                out.append((h, st, sv))
+
     update("[TT] Kilde 1: keyword-sok...")
     queries = build_queries(niches)
-    handles += search_tiktok_accounts(queries)
-    update(f"[TT]  Kilde 1 totalt unike: {len(set(h.lower() for h in handles))}")
+    add_batch(search_tiktok_accounts(queries))
+    update(f"[TT]  Etter kilde 1: {len(out)} unike")
 
     update("[TT] Kilde 2: seed-profiler (kun Instagram - hoppes over)")
 
     update("[TT] Kilde 3: hashtag-sok...")
     tags = hashtags_from_niches(niches)
-    handles += search_tiktok_hashtags(tags)
-    update(f"[TT]  Kilde 3 totalt unike: {len(set(h.lower() for h in handles))}")
-    return _dedup(handles)
+    add_batch(search_tiktok_hashtags(tags))
+    update(f"[TT]  Etter kilde 3: {len(out)} unike")
+    return out
 
 
-def _filter_instagram_handle(cl, handle: str) -> Optional[FilterResult]:
-    profile = ig_fetch_profile(cl, handle)
-    posts = ig_fetch_posts(cl, profile["user_id"])
-    return check_creator(profile, posts, platform="instagram")
+def _filter_ig(pool: InstagramPool, handle: str,
+               session_id: int) -> tuple[Optional[FilterResult], Optional[str], float]:
+    slot = pool.next_client()
+    t0 = time.time()
+    try:
+        profile = ig_fetch_profile(slot.client, handle,
+                                   account_label=slot.label, session_id=session_id)
+        posts = ig_fetch_posts(slot.client, profile["user_id"],
+                               account_label=slot.label, session_id=session_id)
+    except Exception as e:
+        # Helse-event er allerede logget i klienten
+        return None, slot.label, time.time() - t0
+    result = check_creator(profile, posts, platform="instagram")
+    return result, slot.label, time.time() - t0
 
 
-def _filter_tiktok_handle(handle: str) -> Optional[FilterResult]:
-    profile = tt_fetch_profile(handle)
-    posts = tt_fetch_posts(handle)
-    return check_creator(profile, posts, platform="tiktok")
+def _filter_tt(handle: str) -> tuple[Optional[FilterResult], Optional[str], float]:
+    t0 = time.time()
+    try:
+        profile = tt_fetch_profile(handle)
+        posts = tt_fetch_posts(handle)
+    except Exception:
+        return None, "tiktok_msToken", time.time() - t0
+    result = check_creator(profile, posts, platform="tiktok")
+    return result, "tiktok_msToken", time.time() - t0
+
+
+def _check_and_pause_unhealthy(pool: InstagramPool, update) -> None:
+    """Hvis en konto har rød helse, pause den."""
+    for slot in list(pool.slots):
+        if slot.client is None:
+            continue
+        health = get_account_health(slot.label)
+        if health["status"] == "red":
+            update(f"⚠️  Konto {slot.label}: {health['recommendation']} "
+                   f"({health['challenges_24h']} challenges, "
+                   f"{health['api_error_rate']}% API-feilrate)")
+            pool.pause_account(slot.label, health["recommendation"])
 
 
 def run_session(
     platforms: Optional[list[str]] = None,
     niches: Optional[list[str]] = None,
-    export_to_sheets: bool = True,
     max_handles: Optional[int] = None,
     progress_callback=None,
-) -> SessionStats:
-    """Kjor en komplett discovery + filter + eksport-sesjon.
+) -> tuple[SessionStats, int]:
+    """Kjor en sesjon. Returner (stats, session_id).
 
-    platforms: liste med "instagram" og/eller "tiktok". Default = begge.
+    Ingen automatisk Sheets-eksport. Godkjente lagres i DB og kan eksporteres
+    manuelt via /download-endepunktet.
     """
     stats = SessionStats()
     platforms = platforms or list(VALID_PLATFORMS)
@@ -165,105 +198,135 @@ def run_session(
     if invalid:
         raise ValueError(f"Ugyldige plattformer: {invalid}. Gyldige: {VALID_PLATFORMS}")
     niches = niches or list(NICHES.keys())
+    if not niches:
+        raise ValueError("Minst én nisje må velges")
     cfg = load_config()
+
+    # Start sesjon i DB
+    accounts_for_session: list[str] = []
+    if "instagram" in platforms:
+        accounts_for_session.extend(
+            a["label"] for a in cfg["instagram_accounts"]
+            if not a.get("warmup_mode", False)
+        )
+    if "tiktok" in platforms:
+        accounts_for_session.append("tiktok_msToken")
+    session_id = start_session(platforms, niches, max_handles, accounts_for_session)
 
     def update(msg: str):
         log.info(msg)
         if progress_callback:
             progress_callback(msg, stats)
 
-    update(f"Starter sesjon (plattformer: {', '.join(platforms)}, nisjer: {len(niches)})")
+    update(f"Sesjon #{session_id} startet (plattformer: {', '.join(platforms)}, nisjer: {len(niches)})")
 
-    cl = None
+    pool: Optional[InstagramPool] = None
     if "instagram" in platforms:
-        update("Logger inn pa Instagram...")
-        cl = ig_login()
-        update("IG-innlogging OK.")
+        update("Logger inn pa Instagram-kontoer...")
+        pool = InstagramPool.from_config(session_id=session_id)
+        pool.login_all()
+        update(f"IG-innlogging OK ({len(pool.slots)} kontoer aktive)")
 
-    # ----- 1. Discovery -----
-    all_handles: dict[str, list[str]] = {p: [] for p in platforms}
-
+    # ---- 1. Discovery ----
+    discovery_by_platform: dict[str, list[tuple[str, str, str]]] = {}
     if "instagram" in platforms:
-        all_handles["instagram"] = _discover_instagram(cl, niches, cfg, update)
+        discovery_by_platform["instagram"] = _discover_instagram(pool, niches, cfg, update)
     if "tiktok" in platforms:
-        all_handles["tiktok"] = _discover_tiktok(niches, update)
+        discovery_by_platform["tiktok"] = _discover_tiktok(niches, update)
 
-    stats.discovered = sum(len(h) for h in all_handles.values())
+    stats.discovered = sum(len(d) for d in discovery_by_platform.values())
 
-    # ----- 2. Dedup -----
+    # ---- 2. Dedup ----
     update("Dedupliserer mot SQLite...")
-    unseen_by_platform: dict[str, list[str]] = {}
-    for p, hs in all_handles.items():
-        unseen = filter_unseen(hs, p)
+    unseen_by_platform: dict[str, list[tuple[str, str, str]]] = {}
+    for p, items in discovery_by_platform.items():
+        all_handles = [h for h, _, _ in items]
+        unseen_set = set(filter_unseen(all_handles, p))
+        unseen = [(h, st, sv) for h, st, sv in items if h in unseen_set]
         unseen_by_platform[p] = unseen
-        update(f"  [{p}] {len(unseen)} av {len(hs)} er nye")
+        update(f"  [{p}] {len(unseen)} av {len(items)} er nye")
 
     if max_handles:
-        total_unseen = sum(len(hs) for hs in unseen_by_platform.values())
-        if total_unseen > max_handles:
-            update(f"  Begrenser til {max_handles} handles totalt (fordelt jevnt)")
-            limit_per_platform = max_handles // len(platforms)
+        total = sum(len(u) for u in unseen_by_platform.values())
+        if total > max_handles:
+            limit_per = max_handles // len(platforms)
             for p in unseen_by_platform:
-                unseen_by_platform[p] = unseen_by_platform[p][:limit_per_platform]
+                unseen_by_platform[p] = unseen_by_platform[p][:limit_per]
+            update(f"  Begrenser til {max_handles} totalt ({limit_per} per plattform)")
 
-    stats.after_dedup = sum(len(hs) for hs in unseen_by_platform.values())
+    stats.after_dedup = sum(len(u) for u in unseen_by_platform.values())
 
-    # ----- 3. Filter -----
-    approved_results: list[FilterResult] = []
-
-    for platform, handles in unseen_by_platform.items():
-        if not handles:
+    # ---- 3. Filter ----
+    approved_results: list[tuple[FilterResult, str]] = []  # (result, niche)
+    for platform, items in unseen_by_platform.items():
+        if not items:
             continue
-        update(f"Filtrerer {len(handles)} handles pa {platform}...")
-        for i, handle in enumerate(handles, 1):
-            update(f"  [{platform} {i}/{len(handles)}] @{handle}")
-            try:
-                if platform == "instagram":
-                    result = _filter_instagram_handle(cl, handle)
-                else:
-                    result = _filter_tiktok_handle(handle)
-            except Exception as e:
-                log.warning("  Feil for @%s (%s): %s", handle, platform, e)
-                continue
+        update(f"Filtrerer {len(items)} handles pa {platform}...")
+        for i, (handle, src_type, src_val) in enumerate(items, 1):
+            update(f"  [{platform} {i}/{len(items)}] @{handle}  (kilde: {src_type}={src_val})")
+
+            if platform == "instagram":
+                if pool is None or all(s.client is None for s in pool.slots):
+                    update("  Alle IG-kontoer pauset - stopper IG-filtrering")
+                    break
+                result, account_label, t_taken = _filter_ig(pool, handle, session_id)
+            else:
+                result, account_label, t_taken = _filter_tt(handle)
 
             if result is None:
                 continue
+
             stats.processed += 1
             stats.by_platform[platform] = stats.by_platform.get(platform, 0) + 1
-            record_result(result)
+            record_result(
+                result, session_id=session_id,
+                discovery_source_type=src_type, discovery_source_value=src_val,
+                account_used=account_label, time_taken_sec=t_taken,
+                near_miss=result.near_miss, near_miss_detail=result.near_miss_detail,
+            )
+
             if result.passed:
                 stats.approved += 1
-                approved_results.append(result)
-                update(f"    GODKJENT (nisje={result.niche}, ER={result.engagement_rate}%)")
+                approved_results.append((result, result.niche))
+                update(f"    ✓ GODKJENT (nisje={result.niche}, ER={result.engagement_rate}%)")
             else:
                 stats.rejected += 1
                 stats.by_failure[result.failed_at] = stats.by_failure.get(result.failed_at, 0) + 1
 
-    # ----- 4. Eksport -----
-    if export_to_sheets and approved_results:
-        update(f"Eksporterer {len(approved_results)} godkjente til Google Sheets...")
-        n = append_approved(approved_results)
-        update(f"  Skrev {n} rader til Sheets")
-    elif export_to_sheets:
-        update("Ingen godkjente - hopper over Sheets-eksport")
+            # Sjekk helse hvert 20. creator på IG
+            if platform == "instagram" and i % 20 == 0:
+                _check_and_pause_unhealthy(pool, update)
 
-    update(stats.summary_text())
-    return stats
+    # ---- 4. Selvforsterkende seeds ----
+    if approved_results:
+        max_seeds = cfg.get("seed_max_per_niche", 15)
+        added = 0
+        for result, niche in approved_results:
+            if niche and add_seed(niche, result.handle, max_seeds):
+                added += 1
+        if added > 0:
+            update(f"Selvforsterkende: {added} nye seeds lagt til config")
+
+    # ---- 5. Finalize ----
+    finalize_session(
+        session_id,
+        discovered=stats.discovered, after_dedup=stats.after_dedup,
+        processed=stats.processed, approved=stats.approved, rejected=stats.rejected,
+    )
+
+    m = stats.elapsed_seconds / 60
+    update(f"\nSesjon #{session_id} ferdig pa {m:.1f} min: "
+           f"{stats.approved} godkjent, {stats.rejected} avvist av {stats.processed} prosessert")
+    return stats, session_id
 
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     parser = argparse.ArgumentParser(description="Abahne creator discovery - Steg 1")
-    parser.add_argument(
-        "--platforms",
-        nargs="+",
-        choices=list(VALID_PLATFORMS),
-        help=f"Velg plattform(er). Default: begge ({', '.join(VALID_PLATFORMS)})",
-    )
-    parser.add_argument("--niches", nargs="*", help="Begrens til disse nisjene")
-    parser.add_argument("--no-sheets", action="store_true", help="Hopp over Sheets-eksport")
-    parser.add_argument("--max", type=int, help="Maks antall handles a prosessere totalt")
-    parser.add_argument("--stats-only", action="store_true", help="Skriv DB-statistikk og avslutt")
+    parser.add_argument("--platforms", nargs="+", choices=list(VALID_PLATFORMS))
+    parser.add_argument("--niches", nargs="+")
+    parser.add_argument("--max", type=int)
+    parser.add_argument("--stats-only", action="store_true")
     args = parser.parse_args()
 
     if args.stats_only:
@@ -272,12 +335,7 @@ def main() -> int:
             print(f"  {k}: {v}")
         return 0
 
-    run_session(
-        platforms=args.platforms,
-        niches=args.niches,
-        export_to_sheets=not args.no_sheets,
-        max_handles=args.max,
-    )
+    run_session(platforms=args.platforms, niches=args.niches, max_handles=args.max)
     return 0
 
 

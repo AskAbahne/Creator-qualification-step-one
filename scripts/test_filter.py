@@ -26,7 +26,7 @@ def _make_post(days_ago: int, likes=2000, comments=200, views=15000, caption="my
     }
 
 
-def _make_consistent_posts(weeks: int = 8, posts_per_week: int = 3):
+def _make_consistent_posts(weeks: int = 10, posts_per_week: int = 4):
     """Lag poster: posts_per_week stykker hver uke i `weeks` uker bakover."""
     posts = []
     for w in range(weeks):

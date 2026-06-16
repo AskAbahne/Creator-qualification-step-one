@@ -20,7 +20,7 @@ def main() -> int:
             handle="alice", platform="instagram", passed=True,
             niche="weightloss", engagement_rate=3.2, follower_count=50_000,
         )
-        record_result(approved, db)
+        record_result(approved, db_path=db)
         assert is_processed("alice", "instagram", db)
         print("  [OK] Etter record_result: is_processed returnerer True")
 
@@ -34,7 +34,7 @@ def main() -> int:
             failed_at="1_follower_count", reason="for fa folgere",
             follower_count=3_000,
         )
-        record_result(rejected, db)
+        record_result(rejected, db_path=db)
 
         # 5. filter_unseen
         unseen = filter_unseen(["alice", "bob", "charlie", "dave"], "instagram", db)
@@ -65,7 +65,7 @@ def main() -> int:
             handle="alice", platform="instagram", passed=True,
             niche="nutrition", engagement_rate=5.0, follower_count=60_000,
         )
-        record_result(updated, db)
+        record_result(updated, db_path=db)
         stats2 = get_stats(db)
         assert stats2["total"] == 2, f"Forventet 2, fikk {stats2['total']}"
         approved_after = list_approved(db)

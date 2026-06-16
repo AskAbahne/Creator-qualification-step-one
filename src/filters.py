@@ -35,6 +35,9 @@ SOCIALBLADE_GROWTH_SPIKE = 5_000
 SOCIALBLADE_VIEW_MULTIPLIER = 10
 
 
+NEAR_MISS_MARGIN_PCT = 0.10  # innenfor 10% av terskel = near-miss
+
+
 @dataclass
 class FilterResult:
     handle: str
@@ -48,7 +51,26 @@ class FilterResult:
     niche: Optional[str] = None
     language: Optional[str] = None
     posts_evaluated: int = 0
+    near_miss: bool = False
+    near_miss_detail: Optional[str] = None
     extras: dict = field(default_factory=dict)
+
+
+def _check_near_miss(failed_at: str, follower_count: int, er_pct: float,
+                     avg_views: float, platform: str) -> tuple[bool, Optional[str]]:
+    if failed_at == "1_follower_count":
+        if FOLLOWER_MIN * (1 - NEAR_MISS_MARGIN_PCT) <= follower_count < FOLLOWER_MIN:
+            return True, f"{follower_count:,} ({FOLLOWER_MIN - follower_count:,} under {FOLLOWER_MIN:,})"
+        if FOLLOWER_MAX < follower_count <= FOLLOWER_MAX * (1 + NEAR_MISS_MARGIN_PCT):
+            return True, f"{follower_count:,} ({follower_count - FOLLOWER_MAX:,} over {FOLLOWER_MAX:,})"
+    elif failed_at == "6_engagement_full":
+        threshold = TT_ER_MIN_PCT if platform == "tiktok" else IG_ER_MIN_PCT
+        if er_pct >= threshold * (1 - NEAR_MISS_MARGIN_PCT):
+            return True, f"ER={er_pct:.2f}% ({threshold - er_pct:.2f} under {threshold}%)"
+    elif failed_at == "7_avg_views":
+        if avg_views >= MIN_AVG_VIEWS * (1 - NEAR_MISS_MARGIN_PCT):
+            return True, f"avg_views={avg_views:.0f} ({MIN_AVG_VIEWS - avg_views:.0f} under {MIN_AVG_VIEWS:,})"
+    return False, None
 
 
 def _safe_detect(text: str) -> Optional[str]:
@@ -66,6 +88,20 @@ def _engagement_per_post(post: dict, platform: str) -> int:
     if platform == "tiktok":
         base += post.get("share_count", 0)
     return base
+
+
+def _annotate_near_miss(result: FilterResult, platform: str) -> None:
+    if result.failed_at is None:
+        return
+    near, detail = _check_near_miss(
+        result.failed_at,
+        result.follower_count or 0,
+        result.engagement_rate or 0.0,
+        result.avg_views or 0.0,
+        platform,
+    )
+    result.near_miss = near
+    result.near_miss_detail = detail
 
 
 def _group_by_calendar_week(dates: list[datetime]) -> Counter:
@@ -99,6 +135,7 @@ def check_creator(
     if not (FOLLOWER_MIN <= follower_count <= FOLLOWER_MAX):
         result.failed_at = "1_follower_count"
         result.reason = f"{follower_count:,} utenfor [{FOLLOWER_MIN:,}, {FOLLOWER_MAX:,}]"
+        _annotate_near_miss(result, platform)
         return result
 
     # ---- Kriterium 3: språk (bio) ----  (kjøres før 2 fordi 2 trenger poster)
@@ -114,8 +151,10 @@ def check_creator(
     if not bio_niche:
         result.failed_at = "4_niche_bio"
         result.reason = "ingen nisjematch i bio"
+        _annotate_near_miss(result, platform)
         return result
     result.niche = bio_niche
+    result.extras["niche_bio"] = bio_niche
 
     # ---- Kriterium 5: hente 20 poster (dataforutsetning) ----
     if not posts:
@@ -136,6 +175,7 @@ def check_creator(
     if er_pct < er_threshold:
         result.failed_at = "6_engagement_full"
         result.reason = f"ER={er_pct:.2f}% under {er_threshold}% ({platform})"
+        _annotate_near_miss(result, platform)
         return result
 
     # ---- Kriterium 7: snitt videovisninger ----
@@ -152,15 +192,21 @@ def check_creator(
     if avg_views < MIN_AVG_VIEWS:
         result.failed_at = "7_avg_views"
         result.reason = f"snitt views={avg_views:,.0f} under {MIN_AVG_VIEWS:,}"
+        _annotate_near_miss(result, platform)
         return result
 
     # ---- Kriterium 8: postingsfrekvens (≥3 per uke i 7 uker bakover) ----
+    # Ekskluderer den nåværende ufullstendige uka — vi krever 7 KOMPLETTE uker.
     post_dates = [p["taken_at"] for p in posts if p.get("taken_at")]
-    cutoff = datetime.now(timezone.utc) - timedelta(weeks=CONSISTENCY_WEEKS)
+    now_utc = datetime.now(timezone.utc)
+    this_monday = (now_utc - timedelta(days=now_utc.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    cutoff = this_monday - timedelta(weeks=CONSISTENCY_WEEKS)
     weekly = _group_by_calendar_week(post_dates)
     relevant_weeks = {
         (year, w): count for (year, w), count in weekly.items()
-        if datetime.fromisocalendar(year, w, 1).replace(tzinfo=timezone.utc) >= cutoff
+        if cutoff <= datetime.fromisocalendar(year, w, 1).replace(tzinfo=timezone.utc) < this_monday
     }
     if len(relevant_weeks) < CONSISTENCY_WEEKS:
         result.failed_at = "8_consistency_weeks"
