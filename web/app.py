@@ -13,10 +13,16 @@ from __future__ import annotations
 
 import csv
 import io
+import sys
 import threading
 from collections import deque
 from datetime import datetime
 from pathlib import Path
+
+# Sørg for at prosjektroten er på sys.path (så `python web/app.py` fungerer)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 
 from flask import Flask, Response, jsonify, render_template, request, send_file
 

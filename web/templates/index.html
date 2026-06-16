@@ -2,171 +2,426 @@
 <html lang="no">
 <head>
   <meta charset="UTF-8">
-  <title>Abahne Discovery - Steg 1</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Abahne Discovery</title>
   <style>
-    * { box-sizing: border-box; }
-    body { font-family: -apple-system, Segoe UI, sans-serif; max-width: 1100px; margin: 30px auto; padding: 0 20px; color: #1a1a1a; }
-    h1 { margin: 0; font-size: 26px; }
-    .sub { color: #666; margin-top: 4px; font-size: 14px; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 24px; }
-    .card { background: #f7f7f7; border-radius: 10px; padding: 20px; }
-    .card h2 { margin: 0 0 12px 0; font-size: 16px; color: #333; text-transform: uppercase; letter-spacing: 0.5px; }
-    .stat-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eaeaea; }
-    .stat-row:last-child { border-bottom: 0; }
-    .stat-row .val { font-weight: 600; }
-    button { background: #1a1a1a; color: white; border: 0; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-size: 14px; }
-    button:disabled { background: #aaa; cursor: not-allowed; }
-    button.secondary { background: #fff; color: #1a1a1a; border: 1px solid #1a1a1a; }
-    button.download { background: #1a661a; }
-    .log { background: #0a0a0a; color: #b9ffb9; padding: 14px; border-radius: 8px; font-family: Consolas, monospace; font-size: 12px; height: 320px; overflow-y: auto; white-space: pre-wrap; }
-    .controls { display: flex; gap: 12px; align-items: center; margin: 10px 0; flex-wrap: wrap; }
-    label { font-size: 14px; color: #555; }
-    input[type=number], select { padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
-    .niche-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px 14px; margin: 10px 0 14px; padding: 12px; background: #fff; border-radius: 6px; border: 1px solid #ddd; }
-    .niche-grid label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
-    .niche-quick { display: flex; gap: 8px; margin-bottom: 10px; }
-    .niche-quick button { font-size: 12px; padding: 4px 10px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
-    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eaeaea; }
-    th { color: #666; font-weight: 600; }
-    .status-pill { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
-    .pill-idle { background: #e0e0e0; color: #555; }
-    .pill-running { background: #d1f5d1; color: #1a661a; }
-    .download-bar { display: flex; gap: 10px; margin-top: 12px; }
-    .download-bar a { text-decoration: none; }
-    .info-text { font-size: 12px; color: #888; margin-top: 4px; }
+    :root {
+      --bg: #fafafa;
+      --surface: #ffffff;
+      --border: #e5e7eb;
+      --text: #111827;
+      --text-muted: #6b7280;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --success: #059669;
+      --warning: #d97706;
+      --danger: #dc2626;
+      --radius: 10px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+      background: var(--bg); color: var(--text);
+      font-size: 14px; line-height: 1.5;
+      padding: 32px 24px 64px;
+    }
+    .container { max-width: 1180px; margin: 0 auto; }
+
+    /* Header */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 32px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-mark {
+      width: 36px; height: 36px; border-radius: 8px;
+      background: var(--text); color: white;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 16px;
+    }
+    .brand-text h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+    .brand-text p { font-size: 12px; color: var(--text-muted); }
+
+    .status {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border-radius: 999px;
+      background: var(--surface); border: 1px solid var(--border);
+      font-size: 12px; font-weight: 500;
+    }
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--text-muted);
+    }
+    .status.running .status-dot { background: var(--success); animation: pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    /* Card */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 13px; font-weight: 600; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.04em;
+      margin-bottom: 16px;
+    }
+
+    /* Form */
+    .form-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+      margin-bottom: 20px;
+    }
+    .field label {
+      display: block; font-size: 12px; font-weight: 500;
+      color: var(--text-muted); margin-bottom: 6px;
+    }
+    .field select, .field input {
+      width: 100%; padding: 9px 12px;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: white; font-size: 14px; color: var(--text);
+      font-family: inherit;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .field select:focus, .field input:focus {
+      outline: none; border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+    }
+
+    /* Niche selector */
+    .niche-selector { margin-bottom: 20px; }
+    .niche-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .niche-header .label {
+      font-size: 12px; font-weight: 500; color: var(--text-muted);
+    }
+    .niche-counter {
+      font-size: 12px; color: var(--text-muted);
+      background: var(--bg); padding: 3px 8px; border-radius: 6px;
+    }
+    .niche-counter strong { color: var(--text); }
+    .niche-quick {
+      display: flex; gap: 8px; margin-bottom: 10px;
+    }
+    .niche-quick button {
+      background: white; color: var(--text);
+      border: 1px solid var(--border);
+      padding: 5px 10px; border-radius: 6px;
+      font-size: 12px; cursor: pointer; font-family: inherit;
+    }
+    .niche-quick button:hover { background: var(--bg); }
+    .niche-chips {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      padding: 12px; background: var(--bg); border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 6px 12px; border-radius: 999px;
+      background: white; border: 1px solid var(--border);
+      font-size: 13px; cursor: pointer;
+      transition: all 0.12s;
+      user-select: none;
+    }
+    .chip:hover { border-color: var(--text-muted); }
+    .chip.selected {
+      background: var(--accent); color: white; border-color: var(--accent);
+    }
+    .chip input { display: none; }
+
+    /* Primary button */
+    .btn-primary {
+      background: var(--accent); color: white;
+      border: none; padding: 11px 24px;
+      border-radius: 8px; font-size: 14px; font-weight: 500;
+      cursor: pointer; font-family: inherit;
+      transition: background 0.15s;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn-primary:disabled { background: #9ca3af; cursor: not-allowed; }
+    .btn-secondary {
+      background: white; color: var(--text);
+      border: 1px solid var(--border); padding: 9px 16px;
+      border-radius: 8px; font-size: 13px; cursor: pointer;
+      font-family: inherit; transition: background 0.15s;
+    }
+    .btn-secondary:hover:not(:disabled) { background: var(--bg); }
+    .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .actions {
+      display: flex; gap: 10px; align-items: center;
+      padding-top: 16px; border-top: 1px solid var(--border);
+    }
+    .actions-spacer { flex: 1; }
+
+    /* Live panel */
+    .live-grid {
+      display: grid; grid-template-columns: 280px 1fr; gap: 16px;
+      margin-bottom: 16px;
+    }
+    .metrics {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    }
+    .metric {
+      background: var(--bg); border-radius: 8px;
+      padding: 12px;
+    }
+    .metric-label {
+      font-size: 11px; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.04em;
+      margin-bottom: 2px;
+    }
+    .metric-value { font-size: 22px; font-weight: 600; }
+    .metric-value.success { color: var(--success); }
+    .metric-value.muted { color: var(--text-muted); }
+
+    .log-box {
+      background: #0f172a; color: #cbd5e1;
+      border-radius: 8px; padding: 14px;
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+      font-size: 12px; line-height: 1.6;
+      height: 200px; overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    .log-box:empty::before {
+      content: "Sesjonslogg vises her når du starter en kjøring";
+      color: #64748b;
+    }
+
+    /* Tables */
+    table {
+      width: 100%; border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      text-align: left; padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      font-size: 11px; font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.04em;
+      background: var(--bg);
+    }
+    tr:last-child td { border-bottom: none; }
+    .rate-high { color: var(--success); font-weight: 600; }
+    .rate-mid { color: var(--warning); font-weight: 500; }
+    .rate-low { color: var(--danger); }
+    .empty-state {
+      padding: 32px 16px; text-align: center;
+      color: var(--text-muted); font-size: 13px;
+    }
+    .empty-state strong { color: var(--text); display: block; margin-bottom: 4px; font-size: 14px; }
+
+    /* Two-column grid */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px) {
+      .two-col, .live-grid, .form-row { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
-  <h1>Abahne Discovery <span id="status-pill" class="status-pill pill-idle">Klar</span></h1>
-  <div class="sub">Steg 1 - automatisert creator-qualification | Instagram + TikTok</div>
-
-  <div class="card" style="margin-top: 24px;">
-    <h2>Start sesjon</h2>
-    <form id="run-form">
-      <div class="controls">
-        <label>Plattform:
-          <select name="platform_choice" id="platform-choice">
-            <option value="instagram" selected>Kun Instagram</option>
-            <option value="tiktok">Kun TikTok</option>
-            <option value="both">Begge</option>
-          </select>
-        </label>
-        <label>Maks handles: <input type="number" name="max" value="50" min="1" max="5000"></label>
-      </div>
-
-      <div>
-        <label style="display: block; margin-bottom: 4px;"><strong>Nisjer å søke i</strong> (minst 1)</label>
-        <div class="niche-quick">
-          <button type="button" onclick="selectAllNiches(true)">Velg alle</button>
-          <button type="button" onclick="selectAllNiches(false)">Tøm</button>
-        </div>
-        <div class="niche-grid">
-          {% for niche in all_niches %}
-          <label><input type="checkbox" name="niches" value="{{ niche }}"> {{ niche }}</label>
-          {% endfor %}
+  <div class="container">
+    <header>
+      <div class="brand">
+        <div class="brand-mark">A</div>
+        <div class="brand-text">
+          <h1>Abahne Discovery</h1>
+          <p>Creator qualification &middot; Instagram + TikTok</p>
         </div>
       </div>
-
-      <button type="submit" id="run-btn">Kjør sesjon</button>
-      <div class="info-text">Ingen automatisk eksport til Google Sheets. Etter sesjon: bruk «Last ned»-knappene under.</div>
-    </form>
-
-    <div class="download-bar">
-      <button type="button" class="download" id="dl-session-btn" disabled onclick="downloadSession()">Last ned godkjente (CSV)</button>
-      <button type="button" class="secondary" onclick="downloadDiagnostics()">Hent data (JSON)</button>
-    </div>
-    <div class="info-text">«Hent data» laster ned all kumulativ diagnostikk for opplasting til Claude.</div>
-  </div>
-
-  <div class="grid">
-    <div class="card">
-      <h2>Live-status</h2>
-      <div id="live-stats">
-        <div class="stat-row"><span>Discovered:</span><span class="val" id="s-discovered">-</span></div>
-        <div class="stat-row"><span>Etter dedup:</span><span class="val" id="s-dedup">-</span></div>
-        <div class="stat-row"><span>Prosessert:</span><span class="val" id="s-processed">-</span></div>
-        <div class="stat-row"><span>Godkjent:</span><span class="val" id="s-approved">-</span></div>
-        <div class="stat-row"><span>Avvist:</span><span class="val" id="s-rejected">-</span></div>
-        <div class="stat-row"><span>Tid (min):</span><span class="val" id="s-time">-</span></div>
+      <div class="status" id="status-badge">
+        <span class="status-dot"></span>
+        <span id="status-text">Klar</span>
       </div>
-      <h2 style="margin-top: 20px;">Database totalt</h2>
-      <div class="stat-row"><span>Totalt prosessert:</span><span class="val">{{ stats.total }}</span></div>
-      <div class="stat-row"><span>Godkjent:</span><span class="val">{{ stats.approved }}</span></div>
-      <div class="stat-row"><span>Avvist:</span><span class="val">{{ stats.rejected }}</span></div>
-    </div>
+    </header>
 
+    <!-- Primary: New session -->
     <div class="card">
-      <h2>Sesjonslogg</h2>
-      <div id="log" class="log">Klar - velg nisjer og trykk "Kjør sesjon".</div>
+      <div class="card-title">Ny sesjon</div>
+      <form id="run-form">
+        <div class="form-row">
+          <div class="field">
+            <label for="platform-choice">Plattform</label>
+            <select name="platform_choice" id="platform-choice">
+              <option value="instagram" selected>Kun Instagram</option>
+              <option value="tiktok">Kun TikTok</option>
+              <option value="both">Begge</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="max-handles">Maks handles per sesjon</label>
+            <input type="number" name="max" id="max-handles" value="50" min="1" max="5000">
+          </div>
+        </div>
+
+        <div class="niche-selector">
+          <div class="niche-header">
+            <span class="label">Nisjer å søke i</span>
+            <span class="niche-counter"><strong id="niche-count">0</strong> av {{ all_niches|length }} valgt</span>
+          </div>
+          <div class="niche-quick">
+            <button type="button" onclick="selectAllNiches(true)">Velg alle</button>
+            <button type="button" onclick="selectAllNiches(false)">Tøm</button>
+          </div>
+          <div class="niche-chips" id="niche-chips">
+            {% for niche in all_niches %}
+            <label class="chip" data-niche="{{ niche }}">
+              <input type="checkbox" name="niches" value="{{ niche }}">
+              {{ niche }}
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="submit" id="run-btn" class="btn-primary">Kjør sesjon</button>
+          <div class="actions-spacer"></div>
+          <button type="button" class="btn-secondary" id="dl-session-btn" disabled onclick="downloadSession()">Last ned godkjente</button>
+          <button type="button" class="btn-secondary" onclick="downloadDiagnostics()">Hent data</button>
+        </div>
+      </form>
     </div>
-  </div>
 
-  <div class="card" style="margin-top: 20px;">
-    <h2>Godkjenningsrate per nisje</h2>
-    <p style="color: #666; font-size: 13px; margin: 0 0 10px;">
-      Viser kun creators som matchet en nisje. Bruk dette til å se hvilke nisjer som leverer flest godkjente.
-    </p>
-    {% if niche_stats %}
-    <table>
-      <thead><tr><th>Nisje</th><th>Prosessert</th><th>Godkjent</th><th>Avvist</th><th>Rate</th></tr></thead>
-      <tbody>
-        {% for s in niche_stats %}
-        <tr>
-          <td>{{ s.niche }}</td>
-          <td>{{ s.processed }}</td>
-          <td><strong>{{ s.approved }}</strong></td>
-          <td style="color: #888;">{{ s.rejected }}</td>
-          <td>
-            {% if s.approval_rate >= 5 %}
-              <span style="color: #1a661a; font-weight: 600;">{{ s.approval_rate }}%</span>
-            {% elif s.approval_rate >= 2 %}
-              <span style="color: #b07000;">{{ s.approval_rate }}%</span>
-            {% else %}
-              <span style="color: #b03030;">{{ s.approval_rate }}%</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <p style="color: #888;">Ingen data enda - kjør første sesjon.</p>
-    {% endif %}
-  </div>
+    <!-- Live panel -->
+    <div class="card" id="live-card">
+      <div class="card-title">Live status</div>
+      <div class="live-grid">
+        <div class="metrics">
+          <div class="metric">
+            <div class="metric-label">Funnet</div>
+            <div class="metric-value muted" id="m-discovered">—</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Etter dedup</div>
+            <div class="metric-value muted" id="m-dedup">—</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Prosessert</div>
+            <div class="metric-value" id="m-processed">—</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Godkjent</div>
+            <div class="metric-value success" id="m-approved">—</div>
+          </div>
+        </div>
+        <div class="log-box" id="log"></div>
+      </div>
+    </div>
 
-  <div class="card" style="margin-top: 20px;">
-    <h2>Siste 10 godkjente</h2>
-    {% if approved_recent %}
-    <table>
-      <thead><tr><th>Handle</th><th>Plattform</th><th>Nisje</th><th>ER %</th><th>Følgere</th><th>Sjekket</th></tr></thead>
-      <tbody>
-        {% for r in approved_recent %}
-        <tr>
-          <td>@{{ r.handle }}</td>
-          <td>{{ r.platform }}</td>
-          <td>{{ r.niche }}</td>
-          <td>{{ '%.2f' % (r.engagement or 0) }}</td>
-          <td>{{ '{:,}'.format(r.follower_count or 0) }}</td>
-          <td>{{ r.checked_at[:10] }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <p style="color: #888;">Ingen godkjente creators i databasen enda.</p>
-    {% endif %}
+    <div class="two-col">
+      <!-- Niche performance -->
+      <div class="card">
+        <div class="card-title">Godkjenningsrate per nisje</div>
+        {% if niche_stats %}
+        <table>
+          <thead>
+            <tr>
+              <th>Nisje</th>
+              <th style="text-align: right;">Prosessert</th>
+              <th style="text-align: right;">Godkjent</th>
+              <th style="text-align: right;">Rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in niche_stats %}
+            <tr>
+              <td>{{ s.niche }}</td>
+              <td style="text-align: right;">{{ s.processed }}</td>
+              <td style="text-align: right;"><strong>{{ s.approved }}</strong></td>
+              <td style="text-align: right;">
+                {% if s.approval_rate >= 5 %}
+                  <span class="rate-high">{{ s.approval_rate }}%</span>
+                {% elif s.approval_rate >= 2 %}
+                  <span class="rate-mid">{{ s.approval_rate }}%</span>
+                {% else %}
+                  <span class="rate-low">{{ s.approval_rate }}%</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+          <strong>Ingen data ennå</strong>
+          Kjør første sesjon for å se hvilke nisjer som leverer.
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Recent approved -->
+      <div class="card">
+        <div class="card-title">Siste godkjente</div>
+        {% if approved_recent %}
+        <table>
+          <thead>
+            <tr>
+              <th>Handle</th>
+              <th>Nisje</th>
+              <th style="text-align: right;">ER %</th>
+              <th style="text-align: right;">Følgere</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in approved_recent %}
+            <tr>
+              <td>@{{ r.handle }}</td>
+              <td style="color: var(--text-muted);">{{ r.niche }}</td>
+              <td style="text-align: right;">{{ '%.2f' % (r.engagement or 0) }}</td>
+              <td style="text-align: right;">{{ '{:,}'.format(r.follower_count or 0) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+          <strong>Ingen godkjente ennå</strong>
+          Etter første vellykkede sesjon vises de her.
+        </div>
+        {% endif %}
+      </div>
+    </div>
   </div>
 
   <script>
     const logEl = document.getElementById('log');
-    const pill = document.getElementById('status-pill');
+    const statusBadge = document.getElementById('status-badge');
+    const statusText = document.getElementById('status-text');
     const runBtn = document.getElementById('run-btn');
     const dlBtn = document.getElementById('dl-session-btn');
     const form = document.getElementById('run-form');
+    const counterEl = document.getElementById('niche-count');
+
+    // Chip toggle interaction
+    document.querySelectorAll('.chip').forEach(chip => {
+      const input = chip.querySelector('input');
+      chip.addEventListener('click', (e) => {
+        e.preventDefault();
+        input.checked = !input.checked;
+        chip.classList.toggle('selected', input.checked);
+        updateCounter();
+      });
+    });
+
+    function updateCounter() {
+      const n = document.querySelectorAll('.chip input:checked').length;
+      counterEl.textContent = n;
+    }
 
     function selectAllNiches(state) {
-      document.querySelectorAll('input[name="niches"]').forEach(cb => cb.checked = state);
+      document.querySelectorAll('.chip').forEach(chip => {
+        const input = chip.querySelector('input');
+        input.checked = state;
+        chip.classList.toggle('selected', state);
+      });
+      updateCounter();
     }
 
     function downloadSession() { window.location.href = '/download/session'; }
@@ -174,14 +429,12 @@
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const checked = document.querySelectorAll('input[name="niches"]:checked');
-      if (checked.length === 0) {
+      if (document.querySelectorAll('.chip input:checked').length === 0) {
         alert('Minst én nisje må velges.');
         return;
       }
       runBtn.disabled = true;
-      const data = new FormData(form);
-      const r = await fetch('/run', { method: 'POST', body: data });
+      const r = await fetch('/run', { method: 'POST', body: new FormData(form) });
       if (!r.ok) {
         const j = await r.json();
         alert('Kunne ikke starte: ' + (j.error || 'ukjent feil'));
@@ -194,13 +447,13 @@
         const r = await fetch('/status');
         const j = await r.json();
         if (j.running) {
-          pill.className = 'status-pill pill-running';
-          pill.textContent = 'Kjorer (' + (j.started_at || '...') + ')';
+          statusBadge.classList.add('running');
+          statusText.textContent = 'Kjører' + (j.started_at ? ' (startet ' + j.started_at + ')' : '');
           runBtn.disabled = true;
           dlBtn.disabled = true;
         } else {
-          pill.className = 'status-pill pill-idle';
-          pill.textContent = 'Klar';
+          statusBadge.classList.remove('running');
+          statusText.textContent = 'Klar';
           runBtn.disabled = false;
           dlBtn.disabled = (j.last_session_id === null);
         }
@@ -209,14 +462,16 @@
           logEl.scrollTop = logEl.scrollHeight;
         }
         if (j.stats) {
-          const s = j.stats;
-          const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-          setVal('s-discovered', s.discovered);
-          setVal('s-dedup', s.after_dedup);
-          setVal('s-processed', s.processed);
-          setVal('s-approved', s.approved);
-          setVal('s-rejected', s.rejected);
-          setVal('s-time', s.elapsed_min);
+          const setVal = (id, v, classes) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.textContent = v;
+            if (classes) { el.className = 'metric-value ' + classes; }
+          };
+          setVal('m-discovered', j.stats.discovered);
+          setVal('m-dedup', j.stats.after_dedup);
+          setVal('m-processed', j.stats.processed);
+          setVal('m-approved', j.stats.approved, 'success');
         }
       } catch (e) { /* ignore */ }
     }
