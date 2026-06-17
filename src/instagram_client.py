@@ -32,9 +32,7 @@ from .database import log_health_event
 log = logging.getLogger(__name__)
 
 POSTS_PER_PROFILE = 20
-MEDIA_TYPE_PHOTO = 1
 MEDIA_TYPE_VIDEO = 2
-MEDIA_TYPE_CAROUSEL = 8
 
 
 def _polite_delay() -> None:
@@ -204,7 +202,7 @@ def fetch_recent_posts(cl: Client, user_id, amount: int = POSTS_PER_PROFILE,
 
 
 # Bakoverkompatibilitet: gammel login() returnerer første aktive Client
-def login(force_fresh: bool = False) -> Client:
+def login() -> Client:
     pool = InstagramPool.from_config()
     pool.login_all()
     return pool.slots[0].client

@@ -71,12 +71,13 @@ def add_seed(niche: str, handle: str, max_per_niche: int = 15,
         cfg = json.load(f)
 
     seeds = cfg.setdefault("seed_profiles", {}).setdefault(niche, [])
-    handle_norm = handle.lstrip("@").lower()
+    handle_clean = handle.lstrip("@")
+    handle_norm = handle_clean.lower()
     if any(s.lower() == handle_norm for s in seeds):
         return False
     if len(seeds) >= max_per_niche:
         return False
-    seeds.append(handle.lstrip("@"))
+    seeds.append(handle_clean)
 
     with config_path.open("w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2, ensure_ascii=False)

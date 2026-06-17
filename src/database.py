@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -275,8 +275,6 @@ def log_health_event(
 
 def get_account_health(account: str, db_path: Path = DB_PATH) -> dict:
     """Returner helsestatus for én konto basert på siste 24 timer."""
-    from datetime import timedelta
-
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     with _connect(db_path) as conn:
         rows = conn.execute(

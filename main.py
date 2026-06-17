@@ -27,7 +27,7 @@ from typing import Optional
 from src.config import load_config
 from src.database import (
     filter_unseen, finalize_session, get_account_health,
-    get_stats, log_health_event, record_result, start_session,
+    get_stats, record_result, start_session,
 )
 from src.discovery.hashtag_search import (
     hashtags_from_niches, search_many_hashtags, search_tiktok_hashtags,
@@ -52,7 +52,6 @@ from src.tiktok_client import (
 log = logging.getLogger("discovery")
 
 VALID_PLATFORMS = ("instagram", "tiktok")
-HEALTH_PAUSE_REASONS = ("challenge_required", "rate_limited")
 
 
 @dataclass
@@ -69,16 +68,6 @@ class SessionStats:
     @property
     def elapsed_seconds(self) -> float:
         return time.time() - self.started_at
-
-
-def _dedup_first(handles_with_source: list[tuple[str, str, str]]) -> dict[str, tuple[str, str]]:
-    """Dedup på handle. Behold første (handle, source_type, source_value)."""
-    out: dict[str, tuple[str, str]] = {}
-    for handle, src_type, src_val in handles_with_source:
-        key = handle.lower()
-        if key not in out:
-            out[key] = (handle, src_type) if False else (src_type, src_val)
-    return out  # {handle_lower: (source_type, source_value)}
 
 
 def _discover_instagram(pool: InstagramPool, niches, cfg, update) -> list[tuple[str, str, str]]:
@@ -249,7 +238,7 @@ def run_session(
     if max_handles:
         total = sum(len(u) for u in unseen_by_platform.values())
         if total > max_handles:
-            limit_per = max_handles // len(platforms)
+            limit_per = max(1, max_handles // len(platforms))
             for p in unseen_by_platform:
                 unseen_by_platform[p] = unseen_by_platform[p][:limit_per]
             update(f"  Begrenser til {max_handles} totalt ({limit_per} per plattform)")

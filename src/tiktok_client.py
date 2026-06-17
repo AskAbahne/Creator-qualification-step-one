@@ -10,6 +10,7 @@ import asyncio
 import logging
 import random
 import time
+from datetime import datetime, timezone
 
 from TikTokApi import TikTokApi
 
@@ -48,7 +49,6 @@ async def _fetch_recent_posts_async(api: TikTokApi, handle: str, amount: int) ->
     async for video in user.videos(count=amount):
         v = video.as_dict
         stats = v.get("stats", {})
-        from datetime import datetime, timezone
         create_ts = v.get("createTime", 0)
         taken_at = datetime.fromtimestamp(create_ts, tz=timezone.utc) if create_ts else None
 
@@ -77,7 +77,7 @@ async def _fetch_recent_posts_async(api: TikTokApi, handle: str, amount: int) ->
 async def _with_api(work):
     cfg = load_config()
     ms_token = cfg["tiktok_ms_token"]
-    proxy = cfg.get("proxy", "").strip()
+    proxy = cfg.get("tiktok_proxy", "").strip() or cfg.get("proxy", "").strip()
 
     async with TikTokApi() as api:
         session_kwargs = {"ms_tokens": [ms_token], "num_sessions": 1, "sleep_after": 3}
